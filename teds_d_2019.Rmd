@@ -1,0 +1,177 @@
+---
+title: "TEDS D"
+author: "Connor Flynn"
+date: "11/10/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(haven)
+library(here)
+library(janitor)
+library(ggcorrplot)
+library(randomForest)
+library(ranger)
+library(vip)
+```
+
+Load in Data
+
+```{r}
+teds_d <- read_dta(here("data/tedsd_puf_2019.dta"))
+```
+
+
+Clean Column Names
+
+```{r}
+teds_d <- teds_d %>% 
+  clean_names()
+```
+
+Check Column Classes
+
+```{r}
+lapply(teds_d, class)
+```
+
+```{r}
+teds_d <- teds_d %>% 
+  mutate_all(~as.character(as.factor(.)))
+```
+
+```{r}
+lapply(teds_d, class)
+```
+
+
+Replace -9 with NA
+
+```{r}
+teds_d[teds_d == "-9"] <- NA
+```
+
+Check Case ID's 
+
+```{r}
+length(unique(teds_d[["caseid"]]))
+```
+
+Random Forest
+
+```{r}
+teds_d_treatment_result <- teds_d %>% 
+  filter(reason == "1" | reason == "2")
+```
+
+```{r}
+teds_d_treatment_result$reason <- as.factor(teds_d_treatment_result$reason)
+```
+
+```{r}
+sum(is.na(teds_d_treatment_result))
+```
+
+```{r}
+teds_d_drop_na_test <-  teds_d_treatment_result[, which(colMeans(!is.na(teds_d_treatment_result)) > 0.8)]
+
+teds_d_drop_na_test <- drop_na(teds_d_drop_na_test)
+
+teds_d_drop_na_test <- teds_d_drop_na_test %>% 
+  select(-disyr, -caseid, -stfips)
+```
+
+```{r}
+# rf_treatment_result <- randomForest(reason ~ ., 
+#                         data =
+#                         teds_d_drop_na_test, 
+#                         importance = TRUE)
+# 
+# rf_treatment_result
+
+
+fit <- ranger(reason ~ ., 
+                  data = teds_d_drop_na_test, 
+                  num.trees = 500,
+                  max.depth = 8,
+                  probability = TRUE,
+              importance = 'impurity',
+              classification = TRUE)
+    fit
+```
+
+```{r}
+v1 <- vip(fit)
+v2 <- vip(fit)
+grid.arrange(v1, v2, ncol=2)
+```
+
+
+Exploratory Analysis
+
+
+
+```{r}
+teds_d_grouped_marstat_reason <- teds_d %>% 
+  group_by(marstat,reason) %>% 
+  count()
+```
+
+```{r}
+ggplot(data = teds_d_grouped_marstat_reason,                         # Draw barplot with grouping & stacking
+       aes(x = n,
+           y = reason,
+           fill = marstat)) + 
+  geom_bar(stat = "identity",
+           position = "stack") +
+  #facet_grid(~ effects) + 
+  #coord_flip() + 
+  theme_minimal() +
+  scale_fill_brewer(palette="Set3") 
+
+```
+
+```{r}
+teds_d_grouped_educ_reason <- teds_d %>% 
+  group_by(educ,reason) %>% 
+  count()
+```
+
+
+```{r}
+ggplot(data = teds_d_grouped_educ_reason,                         # Draw barplot with grouping & stacking
+       aes(x = n,
+           y = reason,
+           fill = educ)) + 
+  geom_bar(stat = "identity",
+           position = "stack") +
+  #facet_grid(~ effects) + 
+  #coord_flip() + 
+  theme_minimal() +
+  scale_fill_brewer(palette="Set3") 
+
+```
+
+```{r}
+teds_d_grouped_division_reason <- teds_d %>% 
+  group_by(division,reason) %>% 
+  count()
+```
+
+
+```{r}
+ggplot(data = teds_d_grouped_division_reason,                         # Draw barplot with grouping & stacking
+       aes(x = n,
+           y = reason,
+           fill = division)) + 
+  geom_bar(stat = "identity",
+           position = "stack") +
+  #facet_grid(~ effects) + 
+  #coord_flip() + 
+  theme_minimal() +
+  scale_fill_brewer(palette="Set3") 
+
+```
+
