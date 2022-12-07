@@ -15,6 +15,9 @@ library(ggcorrplot)
 library(randomForest)
 library(ranger)
 library(vip)
+library(edarf)
+library(caret)
+library(randomForestExplainer)
 ```
 
 Load in Data
@@ -34,16 +37,20 @@ teds_d <- teds_d %>%
 Check Column Classes
 
 ```{r}
-lapply(teds_d, class)
+#lapply(teds_d, class)
 ```
 
 ```{r}
-teds_d <- teds_d %>% 
+teds_d <- teds_d %>%
   mutate_all(~as.character(as.factor(.)))
+
+# teds_d <- teds_d %>% 
+#   mutate_all(as.factor)
+
 ```
 
 ```{r}
-lapply(teds_d, class)
+#lapply(teds_d, class)
 ```
 
 
@@ -98,14 +105,357 @@ fit <- ranger(reason ~ .,
                   max.depth = 8,
                   probability = TRUE,
               importance = 'impurity',
+              keep.inbag = TRUE,
               classification = TRUE)
     fit
 ```
 
 ```{r}
+fit_no_probability <- ranger(reason ~ ., 
+                  data = teds_d_drop_na_test, 
+                  num.trees = 500,
+                  max.depth = 8,
+                  probability = FALSE,
+              importance = 'impurity',
+              keep.inbag = TRUE,
+              classification = TRUE)
+    fit_no_probability
+```
+
+
+```{r}
 v1 <- vip(fit)
-v2 <- vip(fit)
-grid.arrange(v1, v2, ncol=2)
+v1
+```
+
+```{r}
+v2 <- vip(fit_no_probability)
+v2
+```
+```{r}
+randomForestExplainer::plot_predict_interaction(forest = fit, 
+                                                data = teds_d_drop_na_test,
+                                                variable1 = "psource",
+                                                variable2 = "methuse")
+```
+
+```{r}
+randomForestExplainer::plot_predict_interaction(forest = fit, 
+                                                data = teds_d_drop_na_test,
+                                                variable1 = "services",
+                                                variable2 = "los")
+```
+
+
+
+```{r}
+#df_rf_v2 <- teds_d_drop_na_test %>% 
+  #mutate(predicted = predict(fit_no_probability))
+```
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+vip_reason <- as.data.frame(fit$variable.importance)
+```
+
+
+
+
+
+
+```{r}
+vip_predictions <- as.data.frame(fit$predictions)
+```
+
+
+```{r}
+#as.data.frame(predict(fit, teds_d_drop_na_test, type = "se"))
+```
+
+```{r}
+# df_vip_reason <- teds_d_drop_na_test %>% 
+#   mutate(predicted = fit$predictions)
+
+
+  
+df_vip_reason <- merge(vip_predictions, teds_d_drop_na_test,
+                          by = 'row.names', all = TRUE)
+
+```
+
+```{r}
+colnames(df_vip_reason)[colnames(df_vip_reason) == "1"] <- "probability_completed_treatment"
+
+colnames(df_vip_reason)[colnames(df_vip_reason) == "2"] <- "probability_voluntarily_left"
+```
+
+High and Low Probability Tables
+
+
+```{r}
+
+high_probability_completed_treatment <- df_vip_reason %>% 
+  filter(probability_completed_treatment > 0.90)
+
+low_probability_completed_treatment <- df_vip_reason %>% 
+  filter(probability_voluntarily_left > 0.74)
+```
+
+
+Services
+
+```{r}
+table(high_probability_completed_treatment$services)
+```
+
+
+```{r}
+table(low_probability_completed_treatment$services)
+```
+
+Services Discharge
+
+```{r}
+table(high_probability_completed_treatment$services_d)
+```
+
+
+```{r}
+table(low_probability_completed_treatment$services_d)
+```
+
+Methuse
+
+```{r}
+table(high_probability_completed_treatment$methuse)
+```
+
+
+```{r}
+table(low_probability_completed_treatment$methuse)
+```
+
+
+LOS
+
+```{r}
+table(high_probability_completed_treatment$los)
+```
+
+
+```{r}
+table(low_probability_completed_treatment$los)
+```
+
+
+
+
+```{r}
+
+teds_d_drop_na_test["services"][teds_d_drop_na_test["services"] == "1"] <- "Detox, 24-hour, hospital inpatient"
+
+teds_d_drop_na_test["services"][teds_d_drop_na_test["services"] == "2"] <- "Detox, 24-hour, free-standing residential"
+
+teds_d_drop_na_test["services"][teds_d_drop_na_test["services"] == "3"] <- "Rehab/residential, hospital (non-detox)"
+
+teds_d_drop_na_test["services"][teds_d_drop_na_test["services"] == "4"] <- "Rehab/residential, short term (30 days or fewer) "
+
+teds_d_drop_na_test["services"][teds_d_drop_na_test["services"] == "5"] <- "Rehab/residential, long term (more than 30 days)"
+
+teds_d_drop_na_test["services"][teds_d_drop_na_test["services"] == "6"] <- "Ambulatory, intensive outpatient"
+
+teds_d_drop_na_test["services"][teds_d_drop_na_test["services"] == "7"] <- "Ambulatory, non-intensive outpatient"
+
+teds_d_drop_na_test["services"][teds_d_drop_na_test["services"] == "8"] <- "Ambulatory, detoxification"
+
+
+teds_d_drop_na_test$reason <- as.character(teds_d_drop_na_test$reason)
+
+teds_d_drop_na_test["reason"][teds_d_drop_na_test["reason"] == "1"] <- "Treatment completed"
+
+teds_d_drop_na_test["reason"][teds_d_drop_na_test["reason"] == "2"] <- "Dropped out of treatment"
+
+
+```
+
+
+Length of Stay
+
+```{r}
+teds_d_drop_na_test_los <- teds_d_drop_na_test %>% 
+  group_by(los, reason) %>% 
+  count()
+```
+
+
+```{r}
+teds_d_drop_na_test_los$los <- as.numeric(as.character(teds_d_drop_na_test_los$los))
+```
+
+```{r}
+ggplot(data = teds_d_drop_na_test_los, aes(x = los,
+                                           y = n)) +
+  geom_line(aes(color = reason, linetype = reason)) +
+  scale_color_manual(values = c("darkred", "steelblue")) +
+  theme_minimal()
+```
+Methuse
+
+
+```{r}
+teds_d_drop_na_test_methuse <- teds_d_drop_na_test %>% 
+  group_by(reason, methuse) %>% 
+  count()
+```
+
+```{r}
+ggplot(teds_d_drop_na_test_methuse, aes(x = n,
+                                        y = methuse,
+                                        fill = reason)) +
+  geom_bar(position="dodge", stat="identity") +
+  scale_fill_manual(values = c("darkred", "steelblue")) +
+  theme_minimal()
+
+```
+
+Services
+
+```{r}
+teds_d_drop_na_test_services <- teds_d_drop_na_test %>% 
+  group_by(reason, services) %>% 
+  count()
+```
+
+
+```{r}
+ggplot(teds_d_drop_na_test_services, aes(x = n,
+                                        y = services,
+                                        fill = reason)) +
+  geom_bar(position="dodge", stat="identity") +
+  scale_fill_manual(values = c("darkred", "steelblue")) +
+  theme_minimal()
+
+```
+
+Services Discharge
+
+```{r}
+teds_d_drop_na_test_services_d <- teds_d_drop_na_test %>% 
+  group_by(reason, services_d) %>% 
+  count()
+```
+
+
+```{r}
+ggplot(teds_d_drop_na_test_services_d, aes(x = n,
+                                        y = services_d,
+                                        fill = reason)) +
+  geom_bar(position="dodge", stat="identity") +
+  scale_fill_manual(values = c("steelblue", "darkred")) +
+  theme_minimal()
+
+```
+
+Services and Length of Stay
+
+```{r}
+teds_d_drop_na_test_services_los <- teds_d_drop_na_test %>% 
+  group_by(reason, services, los) %>% 
+  count()
+```
+
+```{r}
+teds_d_drop_na_test_services_los$los <- as.numeric(as.character(teds_d_drop_na_test_services_los$los))
+```
+
+
+
+```{r}
+ggplot(teds_d_drop_na_test_services_los, aes(x = los,
+                                        y = n,
+                                        fill = services)) +
+  geom_bar(position="stack", stat="identity") +
+  facet_grid(~reason) +
+  scale_fill_brewer(palette = "Set3") +
+  theme_minimal()
+
+```
+```{r}
+ggplot(data = teds_d_drop_na_test_services_los, aes(x = los,
+                                           y = n)) +
+  geom_line(aes(color = services, linetype = reason)) +
+  scale_color_brewer(palette = "Dark2") +
+  theme_minimal() +
+  facet_wrap(~services)
+```
+
+
+```{r}
+table(high_probability_completed_treatment$educ)
+```
+
+
+
+
+
+
+```{r}
+# # Save top predictor names as character vector
+# nm_vip_reason <- as.character(row.names(vip_reason))[1:12]
+# # Get partial depedence values for top predictors
+# pd_vip_reason <- partial_dependence(fit = fit,
+#                          vars = nm_vip_reason,
+#                          data = df_vip_reason)
+#                          # n = c(100, 500))
+```
+
+
+```{r}
+# # Plot partial dependence using edarf
+# plot_pd(pd_df_smr)
+```
+
+
+```{r}
+randomForestExplainer::plot_predict_interaction(forest = missRanger_rf_goal3_smr, 
+                                                data = sdg_report_classifier_data_missRanger_sdg_indicators_isolation,
+                                                variable1 = "number_of_disruptions_to_educational_services_attributed_to_disasters_number",
+                                                variable2 = "forest_area_as_a_proportion_of_total_land_area_percent")
+```
+
+
+
+```{r}
+fit2 <- ranger(reason ~ ., 
+                  data = teds_d_drop_na_test, 
+                  num.trees = 500,
+                  max.depth = 8,
+                  probability = TRUE,
+              importance = 'permutation',
+              classification = TRUE)
+    fit2
+```
+
+```{r}
+# pfun <- function(object, newdata) predict(object, data = newdata)$predictions
+```
+
+```{r}
+# var_imp <- vi(fit2, method = "permute", metric = "auc", pred_wrapper = pfun,
+#               target = "reason", reference_class = "neg")
+# 
+# # Next, convert to an html-based data table with sparklines
+# add_sparklines(var_imp, fit = fit2)
 ```
 
 
@@ -175,3 +525,103 @@ ggplot(data = teds_d_grouped_division_reason,                         # Draw bar
 
 ```
 
+```{r}
+teds_d_grouped_services_reason <- teds_d %>% 
+  group_by(services, reason) %>% 
+  count()
+```
+
+
+```{r}
+ggplot(data = teds_d_grouped_services_reason,                         # Draw barplot with grouping & stacking
+       aes(x = n,
+           y = reason,
+           fill = services)) + 
+  geom_bar(stat = "identity",
+           position = "stack") +
+  #facet_grid(~ effects) + 
+  #coord_flip() + 
+  theme_minimal() +
+  scale_fill_brewer(palette="Pastel1") 
+
+```
+
+Services & Reason Correlation
+
+```{r}
+teds_d_services_reason <- teds_d_drop_na_test %>% 
+  select(reason, services, services_d)
+```
+
+
+```{r}
+model.matrix(~0+., data=teds_d_services_reason) %>% 
+  cor(use="pairwise.complete.obs") %>% 
+  ggcorrplot(show.diag = F, type="lower", lab=TRUE, lab_size=1, insig = "blank",
+tl.cex = 7)
+```
+
+```{r}
+teds_d_divison_reason <- teds_d %>% 
+  select(reason, division)
+```
+
+
+```{r}
+model.matrix(~0+., data=teds_d_divison_reason) %>% 
+  cor(use="pairwise.complete.obs") %>% 
+  ggcorrplot(show.diag = F, type="lower", lab=TRUE, lab_size=1, insig = "blank",
+tl.cex = 7)
+```
+
+
+```{r}
+teds_d_methuse_reason <- teds_d %>% 
+  select(reason, methuse)
+```
+
+
+```{r}
+model.matrix(~0+., data=teds_d_methuse_reason) %>% 
+  cor(use="pairwise.complete.obs") %>% 
+  ggcorrplot(show.diag = F, type="lower", lab=TRUE, lab_size=1, insig = "blank",
+tl.cex = 7)
+```
+
+
+```{r}
+teds_d_divison_reason <- teds_d_treatment_result %>% 
+  select(reason, methuse)
+```
+
+
+```{r}
+model.matrix(~0+., data=teds_d_divison_reason) %>% 
+  cor(use="pairwise.complete.obs") %>% 
+  ggcorrplot(show.diag = F, type="lower", lab=TRUE, lab_size=1, insig = "blank",
+tl.cex = 7)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+teds_d_psource_reason <- teds_d %>% 
+  select(reason, psource)
+```
+
+
+```{r}
+model.matrix(~ ., data=teds_d_psource_reason) %>% 
+  cor(use="everything") %>% 
+  ggcorrplot(show.diag = F, type="lower", lab=TRUE, lab_size=1, insig = "blank",
+tl.cex = 7)
+```
